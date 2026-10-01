@@ -5,3 +5,11 @@ __pycache__/
 *.sqlite3
 .env
 .DS_Store
+
+/media/
+/staticfiles/
+logs_llm/
+*.log
+vectors.db
+vectors.db-shm
+vectors.db-wal
