@@ -18,7 +18,7 @@ class ZodiacSign(models.TextChoices):
 class Fact(models.Model):
     text = models.TextField(blank = False, verbose_name = "Текст")
     category = models.CharField(max_length=64, blank = True, verbose_name = "Категория")
-    ordering = models.IntegerField (default = 0, verbose_name = "Порядок")
+    ordering = models.PositiveIntegerField (default = 0, verbose_name = "Порядок")
     is_active = models.BooleanField (default = True, verbose_name = "Активно")
     
     class Meta:
@@ -32,7 +32,7 @@ class Fact(models.Model):
 
 
 class Horoscope(models.Model):
-    sign = models.CharField(max_length=20, choices=ZodiacSign.choices, verbose_name="Знак зодиака")
+    sign = models.CharField(max_length=20, choices=ZodiacSign.choices, verbose_name="Знак зодиака", db_index=True)
     date = models.DateField(verbose_name="Дата", db_index=True)
     text = models.TextField(verbose_name = "Текст")
     is_active = models.BooleanField (default = True, verbose_name = "Активно")
@@ -45,4 +45,4 @@ class Horoscope(models.Model):
         constraints = [models.UniqueConstraint(fields = ['date', 'sign'], name= "unique_sign_date")]
 
     def __str__(self):
-        return f'{self.sign} — {self.date.strftime("%d.%m.%Y")}'       
+        return f'{self.get_sign_display()} — {self.date.strftime("%d.%m.%Y")}'       
