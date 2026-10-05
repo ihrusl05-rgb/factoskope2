@@ -1,7 +1,8 @@
 from django.http import JsonResponse
 from django.views import View
 from .models import Horoscope, ZodiacSign, Fact
-from datetime import date, timezone
+from datetime import date
+from django.utils import timezone
 
 
 class FactsAPIView(View):
@@ -41,7 +42,7 @@ class HoroscopeAPIView(View):
         else:
             requested_date = timezone.localdate()
 
-        horoscopes = Horoscope.objects.filter(is_active=True, is_draft=False, date=today)
+        horoscopes = Horoscope.objects.filter(is_active=True, is_draft=False, date=requested_date)
 
         data = {
             sign.label: horoscopes.filter(sign=sign.value).first().text if horoscopes.filter(sign=sign.value).exists() else None
