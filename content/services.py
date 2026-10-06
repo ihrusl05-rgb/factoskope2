@@ -1,12 +1,13 @@
-"""Сервисы чтения и подготовки контента перед импортом в базу."""
+"""Чтение, проверка и частичный импорт гороскопов из Excel."""
 
 from datetime import date, datetime
 from typing import Any
+from zipfile import BadZipFile
 
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
-from .models import ZodiacSign
-
+from .models import Horoscope, ZodiacSign
 
 SIGN_MAP = {
     **{value.casefold(): value for value, _label in ZodiacSign.choices},
@@ -14,19 +15,83 @@ SIGN_MAP = {
 }
 
 
-def normalize_horoscope(record: dict[str, Any]) -> dict[str, Any]:
-    """Проверяет и приводит одну запись гороскопа к формату модели.
+def parse_excel(file_path: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Читает Excel, собирая подготовленные гороскопы и ошибки строк.
+
+    На активном листе нужны колонки ``Дата``, ``Знак`` и ``Текст``.
+    Ошибка данных одной строки не мешает обработке остальных строк.
+    Полностью пустые строки пропускаются.
 
     Args:
-        record: Словарь с полями ``date``, ``sign`` и ``text``.
+        file_path: Путь к файлу ``.xlsx``.
 
     Returns:
-        Словарь с объектом ``date``, кодом знака и очищенным текстом.
+        Пара из списка подготовленных гороскопов и списка ошибок.
+        У каждой ошибки есть поля ``Строка`` (номер в Excel, начиная с 1)
+        и ``Причина``. Первая строка файла содержит заголовки.
 
     Raises:
-        ValueError: Если отсутствует обязательное поле, дата имеет неверный
-            формат, знак не распознан или текст пустой.
+        ValueError: Если файл нельзя открыть, он пуст или отсутствует
+            обязательная колонка.
     """
+    try:
+        workbook = load_workbook(file_path, read_only=True, data_only=True)
+    except (OSError, BadZipFile, InvalidFileException) as exc:
+        raise ValueError(f"Не удалось открыть Excel-файл: {exc}") from exc
+
+    try:
+        sheet = workbook.active
+        if sheet is None:
+            raise ValueError("В Excel-файле нет активного листа")
+        rows = sheet.iter_rows(values_only=True)
+        first_row = next(rows, None)
+        if first_row is None:
+            raise ValueError("Excel-файл пуст")
+
+        headers = tuple(
+            str(value).strip() if value is not None else ""
+            for value in first_row
+        )
+        required_headers = {"Дата", "Знак", "Текст"}
+        missing_headers = required_headers.difference(headers)
+        if missing_headers:
+            missing = ", ".join(sorted(missing_headers))
+            raise ValueError(f"В Excel отсутствуют колонки: {missing}")
+
+        prepared_horoscopes = []
+        row_errors = []
+        for row_number, row in enumerate(rows, start=2):
+            if not any(value not in (None, "") for value in row):
+                continue
+
+            excel_row_data = dict(zip(headers, row))
+            horoscope_data = {
+                "date": excel_row_data.get("Дата"),
+                "sign": excel_row_data.get("Знак"),
+                "text": excel_row_data.get("Текст"),
+            }
+            try:
+                prepared_horoscope = normalize_horoscope(horoscope_data)
+            except ValueError as exc:
+                row_errors.append({"Строка": row_number, "Причина": str(exc)})
+                continue
+
+            prepared_horoscopes.append(prepared_horoscope)
+
+        return prepared_horoscopes, row_errors
+    finally:
+        workbook.close()
+
+
+def normalize_horoscope(record: dict[str, Any]) -> dict[str, Any]:
+    """Проверяет и приводит одну запись гороскопа к формату модели.
+    Args:
+        record: Словарь с полями ``date``, ``sign`` и ``text``.
+    Returns:
+        Словарь с объектом ``date``, кодом знака и очищенным текстом.
+    Raises:
+        ValueError: Если отсутствует обязательное поле, дата имеет неверный
+            формат, знак не распознан или текст пустой."""
     for field_name in ("date", "sign", "text"):
         if record.get(field_name) in (None, ""):
             raise ValueError(f"Отсутствует поле: {field_name}")
@@ -58,64 +123,46 @@ def normalize_horoscope(record: dict[str, Any]) -> dict[str, Any]:
         "sign": sign_code,
         "text": text,
     }
-*
 
-def parse_excel(file_path: str) -> list[dict[str, Any]]:
-    """Читает Excel-файл с гороскопами и нормализует его строки.
 
-    Файл должен содержать заголовки ``Дата``, ``Знак`` и ``Гороскоп``.
-    Русские названия знаков преобразуются в коды модели, например
-    ``Овен`` превращается в ``aries``.
+def import_horoscopes_excel(file_path: str) -> dict[str, Any]:
+    """Сохраняет корректные строки Excel и возвращает отчёт об импорте.
+
+    Запись определяется по знаку и дате. Созданные и обновлённые гороскопы
+    становятся черновиками. Ошибочные строки не записываются в базу.
 
     Args:
         file_path: Путь к файлу ``.xlsx``.
 
     Returns:
-        Список словарей, готовых для создания объектов ``Horoscope``.
+        Отчёт с полями ``Создано``, ``Обновлено`` и ``Ошибки``.
+        Найденная запись учитывается как обновлённая даже без смены текста.
+        Ошибки содержат номер строки Excel и причину отказа.
 
     Raises:
-        ValueError: Если файл пуст, в заголовке нет обязательной колонки или
-            строка содержит некорректные данные.
+        ValueError: Если файл невозможно открыть или его заголовки неверны.
+            В этом случае сохранение записей не начинается.
     """
-    workbook = load_workbook(file_path, read_only=True, data_only=True)
+    prepared_horoscopes, row_errors = parse_excel(file_path)
+    created_count = 0
+    updated_count = 0
 
-    try:
-        sheet = workbook.active
-        rows = sheet.iter_rows(values_only=True)
+    for horoscope_data in prepared_horoscopes:
+        saved_horoscope, was_created = Horoscope.objects.update_or_create(
+            sign=horoscope_data["sign"],
+            date=horoscope_data["date"],
+            defaults={
+                "text": horoscope_data["text"],
+                "is_draft": True,
+            },
+        )
+        if was_created:
+            created_count += 1
+        else:
+            updated_count += 1
 
-        try:
-            headers = tuple(
-                str(value).strip() if value is not None else ""
-                for value in next(rows)
-            )
-        except StopIteration as exc:
-            raise ValueError("Excel-файл пуст") from exc
-
-        required_headers = {"Дата", "Знак", "Гороскоп"}
-        missing_headers = required_headers.difference(headers)
-        if missing_headers:
-            missing = ", ".join(sorted(missing_headers))
-            raise ValueError(f"В Excel отсутствуют колонки: {missing}")
-
-        result = []
-        for row_number, row in enumerate(rows, start=2):
-            if not any(value not in (None, "") for value in row):
-                continue
-
-            raw_record = dict(zip(headers, row))
-            try:
-                result.append(
-                    normalize_horoscope(
-                        {
-                            "date": raw_record.get("Дата"),
-                            "sign": raw_record.get("Знак"),
-                            "text": raw_record.get("Гороскоп"),
-                        }
-                    )
-                )
-            except ValueError as exc:
-                raise ValueError(f"Ошибка в строке {row_number}: {exc}") from exc
-
-        return result
-    finally:
-        workbook.close()
+    return {
+        "Создано": created_count,
+        "Обновлено": updated_count,
+        "Ошибки": row_errors,
+    }
