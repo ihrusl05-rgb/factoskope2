@@ -1,0 +1,9 @@
+{% extends "admin/index.html" %}
+
+{% block content %}
+    <div class="module">
+        <h2>Загрузка контента</h2>
+        <p><a href="{% url 'admin:content_import' %}" class="button">Загрузить Excel</a></p>
+    </div>
+    {{ block.super }}
+{% endblock %}

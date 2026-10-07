@@ -1,0 +1,38 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+    <h1>{{ title }}</h1>
+    <p>Выберите тип данных и отдельный файл .xlsx размером до 5 МБ.</p>
+    <p>Факты: обязательная колонка «Текст», необязательная «Категория».</p>
+    <p>Гороскопы: обязательные колонки «Дата», «Знак», «Текст».</p>
+    <p>Корректные строки сохраняются сразу. Гороскопы загружаются черновиками.</p>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Импортировать</button>
+    </form>
+
+    {% if import_completed %}
+        <h2>Результат импорта «{{ file_name }}»</h2>
+        <p role="status">Создано: {{ report.Создано }}. Обновлено: {{ report.Обновлено }}. Ошибок: {{ report.Ошибки|length }}.</p>
+        {% if report.Создано or report.Обновлено %}
+            {% if content_type == "horoscopes" %}
+                <p>Гороскопы сохранены черновиками. Для показа снимите отметку «Черновик» в админке.</p>
+            {% else %}
+                <p>Факты сохранены.</p>
+            {% endif %}
+        {% else %}
+            <p>Записи не сохранены: в файле нет корректных строк.</p>
+        {% endif %}
+
+        {% if report.Ошибки %}
+            <h3>Ошибки строк</h3>
+            <ul>
+                {% for error in report.Ошибки %}
+                    <li>Строка {{ error.Строка }}: {{ error.Причина }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endif %}
+{% endblock %}

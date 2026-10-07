@@ -8,7 +8,7 @@ from django.test import TestCase
 from openpyxl import Workbook
 
 from .models import Horoscope
-from .services import import_horoscopes_excel, parse_excel
+from .services import save_horoscopes_database, parse_horoscop
 
 
 class ExcelImportTests(TestCase):
@@ -39,7 +39,7 @@ class ExcelImportTests(TestCase):
             ["2026-10-05", "Дракон", "Текст"],
             ["2026-10-05", "Близнецы", "Другой текст"],
         ])
-        report = import_horoscopes_excel(self.file_path)
+        report = save_horoscopes_database(self.file_path)
         self.assertEqual(report["Создано"], 2)
         self.assertEqual(report["Обновлено"], 0)
         self.assertEqual([error["Строка"] for error in report["Ошибки"]], [3, 5, 6])
@@ -51,7 +51,7 @@ class ExcelImportTests(TestCase):
         self.assertEqual(existing.text, "Проверенный текст")
         self.assertFalse(existing.is_draft)
 
-        repeated = import_horoscopes_excel(self.file_path)
+        repeated = save_horoscopes_database(self.file_path)
         self.assertEqual(repeated["Создано"], 0)
         self.assertEqual(repeated["Обновлено"], 2)
         self.assertEqual(repeated["Ошибки"], report["Ошибки"])
@@ -66,7 +66,7 @@ class ExcelImportTests(TestCase):
             ["Дата", "Знак", "Текст"],
             ["2026-10-05", "Овен", "Новый текст"],
         ])
-        report = import_horoscopes_excel(self.file_path)
+        report = save_horoscopes_database(self.file_path)
         self.assertEqual(report, {"Создано": 0, "Обновлено": 1, "Ошибки": []})
         existing.refresh_from_db()
         self.assertEqual(existing.text, "Новый текст")
@@ -79,27 +79,27 @@ class ExcelImportTests(TestCase):
             ["2026-10-05", "Телец", None],
             ["2026-10-05", "Овен", "   "],
         ])
-        prepared, errors = parse_excel(self.file_path)
+        prepared, errors = parse_horoscop(self.file_path)
         self.assertEqual(prepared, [])
         self.assertEqual([error["Строка"] for error in errors], [2, 3])
-        report = import_horoscopes_excel(self.file_path)
+        report = save_horoscopes_database(self.file_path)
         self.assertEqual(report, {"Создано": 0, "Обновлено": 0, "Ошибки": errors})
         self.assertFalse(Horoscope.objects.exists())
 
     def test_missing_header_stops_import(self):
         self.write_excel([["Дата", "Знак"], ["2026-10-05", "Овен"]])
         with self.assertRaisesMessage(ValueError, "отсутствуют колонки: Текст"):
-            import_horoscopes_excel(self.file_path)
+            save_horoscopes_database(self.file_path)
         self.assertFalse(Horoscope.objects.exists())
 
     def test_unreadable_file_stops_import(self):
         self.file_path.write_bytes(b"not an Excel workbook")
         with self.assertRaisesMessage(ValueError, "Не удалось открыть Excel-файл"):
-            import_horoscopes_excel(self.file_path)
+            save_horoscopes_database(self.file_path)
         self.assertFalse(Horoscope.objects.exists())
 
     def test_empty_file_stops_import(self):
         self.write_excel([])
         with self.assertRaises(ValueError):
-            import_horoscopes_excel(self.file_path)
+            save_horoscopes_database(self.file_path)
         self.assertFalse(Horoscope.objects.exists())
