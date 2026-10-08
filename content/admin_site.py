@@ -1,4 +1,4 @@
-"""Административный сайт с общей страницей импорта контента."""
+"""Админиский сайт с общей страницей импорта контента."""
 
 from django.contrib.admin import AdminSite
 from django.contrib.admin.apps import AdminConfig

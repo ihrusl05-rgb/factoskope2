@@ -41,38 +41,27 @@ class HoroscopeAPIView(View):
             try:
                 requested_date = date.fromisoformat(today)
             except ValueError:
-                return JsonResponse(
-                    {"error": "invalid date, use YYYY-MM-DD"},
-                    status=400,
-                )
+                return JsonResponse({"error": "неверная дата, используйте формат YYYY-MM-DD"},status=400,)
         else:
             requested_date = timezone.localdate()
 
         horoscopes = Horoscope.objects.filter(is_active=True, is_draft=False, date=requested_date)
 
-        # Получаем тексты всех найденных знаков одним запросом к базе.
         texts_by_sign = dict(horoscopes.values_list("sign", "text"))
-        data = {
-            sign.label: texts_by_sign.get(sign.value)
-            for sign in ZodiacSign
-        }
+        data = {sign.label: texts_by_sign.get(sign.value)for sign in ZodiacSign}
 
         return JsonResponse({"horoscopes": data})
 
 @require_http_methods(["GET", "POST"])
 def import_content_view(request):
     """Показывает общую форму и сохраняет выбранный вид контента из Excel.
-
     Args:
         request: GET для формы или POST с типом контента и Excel-файлом.
-
     Returns:
         Страница формы с отчётом об импорте либо ошибкой файла.
-
     Raises:
         PermissionDenied: Если нет прав на создание и изменение
-            выбранной модели.
-    """
+            выбранной модели."""
     context = {
         **admin.site.each_context(request),
         "title": "Импорт контента из Excel",
@@ -92,10 +81,7 @@ def import_content_view(request):
                 model_name = "horoscope"
                 save_content = save_horoscopes_database
 
-            permissions = (
-                f"content.add_{model_name}",
-                f"content.change_{model_name}",
-            )
+            permissions = (f"content.add_{model_name}",f"content.change_{model_name}",)
             if not request.user.has_perms(permissions):
                 raise PermissionDenied
 

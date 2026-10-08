@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class ZodiacSign(models.TextChoices):
     ARIES = 'aries', 'Овен'
     TAURUS = 'taurus', 'Телец'

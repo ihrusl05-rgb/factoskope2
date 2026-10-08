@@ -43,14 +43,14 @@ class UploadUITests(TestCase):
 
     def test_report_and_errors_with_draft_saving(self):
         response = self.client.post(self.url, {"content_type": "horoscopes", "file": self.excel([
-            ["Дата", "Знак", "Текст"],
-            ["2026-10-07", "Овен", "<script>alert(1)</script>"],
-            ["не дата", "Телец", "Ошибка"],
+            ["Знак зодиака", "7 октября 2026"],
+            ["Овен", "<script>alert(1)</script>"],
+            ["Дракон", "Ошибка"],
         ])})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["report"]["Создано"], 1)
         self.assertEqual(response.context["report"]["Ошибки"][0]["Строка"], 3)
-        self.assertContains(response, "Неверная дата")
+        self.assertContains(response, "Неизвестный знак")
         self.assertContains(response, "Создано: 1")
         self.assertNotContains(response, "<script>alert(1)</script>")
         horoscope = Horoscope.objects.get()
@@ -62,7 +62,7 @@ class UploadUITests(TestCase):
         response = self.client.post(self.url, {"content_type": "horoscopes", "file": SimpleUploadedFile("bad.xlsx", b"invalid")})
         self.assertContains(response, "Не удалось открыть Excel-файл")
         response = self.client.post(self.url, {"content_type": "horoscopes", "file": self.excel([["Дата", "Знак"]])})
-        self.assertContains(response, "отсутствуют колонки: Текст")
+        self.assertContains(response, "Неверная дата")
 
     def test_missing_file_and_invalid_extension(self):
         response = self.client.post(self.url)

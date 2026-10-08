@@ -31,18 +31,17 @@ class ExcelImportTests(TestCase):
             is_draft=False,
         )
         self.write_excel([
-            ["Дата", "Знак", "Текст"],
-            ["2026-10-05", "Овен", " Новый текст "],
-            ["2026-10-05", "Телец", "   "],
-            [None, None, None],
-            ["не дата", "Рак", "Текст"],
-            ["2026-10-05", "Дракон", "Текст"],
-            ["2026-10-05", "Близнецы", "Другой текст"],
+            ["Знак зодиака", "5 октября 2026"],
+            ["Овен", " Новый текст "],
+            ["Телец", "   "],
+            [None, None],
+            ["Дракон", "Текст"],
+            ["Близнецы", "Другой текст"],
         ])
         report = save_horoscopes_database(self.file_path)
         self.assertEqual(report["Создано"], 2)
         self.assertEqual(report["Обновлено"], 0)
-        self.assertEqual([error["Строка"] for error in report["Ошибки"]], [3, 5, 6])
+        self.assertEqual([error["Строка"] for error in report["Ошибки"]], [3, 5])
         self.assertTrue(all(error["Причина"] for error in report["Ошибки"]))
         self.assertEqual(Horoscope.objects.count(), 3)
         self.assertEqual(Horoscope.objects.get(sign="aries").text, "Новый текст")
@@ -63,8 +62,8 @@ class ExcelImportTests(TestCase):
             is_draft=False, is_active=False,
         )
         self.write_excel([
-            ["Дата", "Знак", "Текст"],
-            ["2026-10-05", "Овен", "Новый текст"],
+            ["Знак зодиака", "5 октября 2026"],
+            ["Овен", "Новый текст"],
         ])
         report = save_horoscopes_database(self.file_path)
         self.assertEqual(report, {"Создано": 0, "Обновлено": 1, "Ошибки": []})
@@ -75,9 +74,9 @@ class ExcelImportTests(TestCase):
 
     def test_all_invalid_rows_create_nothing(self):
         self.write_excel([
-            ["Дата", "Знак", "Текст"],
-            ["2026-10-05", "Телец", None],
-            ["2026-10-05", "Овен", "   "],
+            ["Знак зодиака", "5 октября 2026"],
+            ["Телец", None],
+            ["Овен", "   "],
         ])
         prepared, errors = parse_horoscop(self.file_path)
         self.assertEqual(prepared, [])
@@ -86,9 +85,27 @@ class ExcelImportTests(TestCase):
         self.assertEqual(report, {"Создано": 0, "Обновлено": 0, "Ошибки": errors})
         self.assertFalse(Horoscope.objects.exists())
 
-    def test_missing_header_stops_import(self):
-        self.write_excel([["Дата", "Знак"], ["2026-10-05", "Овен"]])
-        with self.assertRaisesMessage(ValueError, "отсутствуют колонки: Текст"):
+    def test_russian_date_in_header(self):
+        self.write_excel([
+            ["Знак зодиака", "22 сентября 2026"],
+            ["Овен", "Текст"],
+        ])
+        prepared, errors = parse_horoscop(self.file_path)
+        self.assertEqual(errors, [])
+        self.assertEqual(prepared[0]["date"], date(2026, 9, 22))
+
+    def test_missing_date_stops_import(self):
+        self.write_excel([["Знак зодиака"], ["Овен"]])
+        with self.assertRaisesMessage(ValueError, "отсутствует дата"):
+            save_horoscopes_database(self.file_path)
+        self.assertFalse(Horoscope.objects.exists())
+
+    def test_invalid_date_stops_import(self):
+        self.write_excel([
+            ["Знак зодиака", "не дата"],
+            ["Овен", "Текст"],
+        ])
+        with self.assertRaises(ValueError):
             save_horoscopes_database(self.file_path)
         self.assertFalse(Horoscope.objects.exists())
 
